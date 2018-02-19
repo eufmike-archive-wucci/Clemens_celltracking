@@ -1,20 +1,102 @@
-library(ggplot2)
-library(dplyr)
-library(xlsx)
+# Written by Chien-cheng Shih
+# Date: 02-15-2018
 
-setwd('~/Documents/wucci_data/Clemens');
+library(dplyr) # data processing
+library(xlsx) # data loading
+library(ggplot2) # for plot
+library(pals) # color scale palette
+library(magrittr) # for using pipe-like operator
 
-source('functions.R')
-center = read.xlsx('./documents/center.xlsx', sheetIndex = 1, header = T)
+# import customized functions
+source('/Users/michaelshih/Documents/code/wucci/Clemens_celltracking/functions.R');
 
-# loading files
-data = StatReader('./rawcsv', congrp = 'WT', expgrp = 'KO', sheetname = 'Tracked_Position.csv')
-summary(data)
+# setting for dplyr
+options(dplyr.width = Inf);
 
-data = tbl_df(data)
+# set working directory
+setwd('~/Documents/wucci_data/Clemens Lab');
 
-pattern = '0926 WT'
-data1 = data %>% filter(., grepl(pattern, sample))
+# data loading ------------------------------------------------------------
+# goal: load files; covert empty cells to NA; remove NA
+# check dimesion beffore and after data merging
 
-## ggplot(data1, aes(Position.X, Position.Y, colour = TrackID)) + 
-        geom_path()
+# load files
+data_position = PositionReader('./rawcsv');
+data_velocity = VelocityReader('./rawcsv');
+
+# remove empty data
+data_position[data_position == ""] = NA;
+data_position = na.omit(data_position); 
+data_velocity[data_velocity == ""] = NA;
+data_position = na.omit(data_position);
+
+# merge position data and velocity data
+data = merge(data_position, data_velocity, by = c('filename', 'sample', 'group', 'ID', 'Category'))
+
+# survey dimension
+summary(data_position)
+summary(data_velocity)
+dim(data_position) 
+dim(data_velocity) 
+dim(data)
+
+# load files with center XYZ-coordination 
+center = read.xlsx('./documents/center.xlsx', sheetIndex = 1, header = T);
+
+# data processing ------------------------------------------------------------
+# goal: add relative distance (xyz), chemoidx, total velocity,
+#       Time(min)
+
+# convert to datatable
+data = tbl_df(data);
+
+# add relative distance and Chemotactic index
+data = data %>% AddRelativeDistance() %>%
+                AddChemoidxVelocity()
+
+# generate plots ------------------------------------------------------------
+
+outputdir1 = '~/Documents/wucci_data/Clemens Lab/documents/plot/PlotDTChemoV';
+outputdir2 = '~/Documents/wucci_data/Clemens Lab/documents/plot/Plotxy';
+outputdir3 = '~/Documents/wucci_data/Clemens Lab/documents/plot/PlotDTChemoVLim';
+
+data1 = data %>% filter(., grepl(levels(data$sample)[1], sample));
+p = PlotDTChemoV(data1)
+p
+
+for (m in levels(data$sample)){
+        datatmp = data %>% filter(., grepl(m, sample));  
+        # plot size
+        dpi = 150;
+        HeightPixel = 700;
+        WidthPixel = 1000;
+        HeightCalc = HeightPixel / dpi;
+        WidthCalc = WidthPixel / dpi;
+        
+        p1 = PlotDTChemoV(datatmp);
+        outputfilename = file.path(outputdir1, paste(m, '.png', sep = ''));
+        ggsave(outputfilename, p1, dpi = dpi, width = WidthCalc, height = HeightCalc, units = 'in');
+   
+        # plot size
+        dpi = 150;
+        HeightPixel = 700;
+        WidthPixel = 700;
+        HeightCalc = HeightPixel / dpi;
+        WidthCalc = WidthPixel / dpi;
+
+        p2 = Plotxy(datatmp)
+        outputfilename = file.path(outputdir2, paste(m, '.png', sep = ''));
+        ggsave(outputfilename, p2, dpi = dpi, width = WidthCalc, height = HeightCalc, units = 'in');
+        
+        # plot size
+        dpi = 150;
+        HeightPixel = 700;
+        WidthPixel = 1000;
+        HeightCalc = HeightPixel / dpi;
+        WidthCalc = WidthPixel / dpi;
+        
+        p3 = PlotDTChemoV(datatmp, xlimits = c(0, 50));
+        outputfilename = file.path(outputdir3, paste(m, '.png', sep = ''));
+        ggsave(outputfilename, p3, dpi = dpi, width = WidthCalc, height = HeightCalc, units = 'in');
+}
+
